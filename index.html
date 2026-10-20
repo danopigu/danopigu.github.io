@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#20251f">
+  <title>Valheim – yhteiskartta</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(29, 34, 29, .96);
+      --panel-border: #41483e;
+      --text: #f3f2e9;
+      --muted: #b4b9ad;
+      --accent: #c4d5a4;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #f8f5ee; }
+    #mapCanvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+    .toolbar {
+      position: fixed; z-index: 2; top: 12px; left: 12px; right: 12px;
+      display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+      padding: 10px 12px; border: 1px solid var(--panel-border); border-radius: 14px;
+      background: var(--panel); color: var(--text); box-shadow: 0 8px 28px #0002;
+      backdrop-filter: blur(10px); max-height: min(190px, 40vh); overflow-y: auto;
+    }
+    .brand { display: flex; flex-direction: column; margin-right: 5px; min-width: 150px; }
+    .brand strong { letter-spacing: .09em; font-size: 13px; }
+    .brand span { color: var(--muted); font-size: 11px; }
+    .separator { width: 1px; height: 30px; background: #495045; margin: 0 2px; }
+    button, input, select {
+      font: inherit; color: var(--text); border: 1px solid #51594d; background: #343b32;
+      border-radius: 8px; min-height: 34px;
+    }
+    button { cursor: pointer; padding: 6px 10px; white-space: nowrap; }
+    button:hover { background: #444d40; }
+    button[hidden] { display: none !important; }
+    button.active { background: #dce8c7; color: #22291f; border-color: #dce8c7; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #dce8c7; outline-offset: 2px; }
+    #nameInput { width: 110px; padding: 6px 8px; }
+    #brushSize { padding: 5px 7px; }
+    .palette { display: flex; gap: 5px; align-items: center; }
+    .color-btn { width: 25px; min-width: 25px; height: 25px; min-height: 25px; border-radius: 50%; padding: 0; border: 2px solid #ffffff50; }
+    .color-btn.selected { outline: 2px solid #fff; outline-offset: 2px; border-color: #222; }
+    #status {
+      position: fixed; z-index: 2; left: 14px; bottom: 12px; max-width: min(700px, calc(100vw - 28px));
+      border: 1px solid var(--panel-border); border-radius: 9px; padding: 7px 10px;
+      background: rgba(29,34,29,.94); color: var(--muted); font-size: 12px; box-shadow: 0 4px 20px #0002;
+    }
+    #compass { position: fixed; z-index: 1; right: 18px; bottom: 18px; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; border: 1px solid #786f5c; background: #f8f5eecc; color: #493f2f; box-shadow: 0 3px 12px #0002; pointer-events: none; }
+    #compass b { font-family: Georgia, serif; font-size: 12px; }
+    #compass span { font-size: 25px; line-height: 21px; }
+    #help {
+      position: fixed; z-index: 1; right: 82px; bottom: 19px; color: #5f594d; font-size: 11px;
+      max-width: calc(100vw - 100px); text-align: right; pointer-events: none;
+    }
+    .login-gate {
+      position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 18px;
+      background: radial-gradient(ellipse at top, #343d31 0%, #171b17 72%); color: var(--text);
+    }
+    .login-gate.hidden { display: none; }
+    .login-card {
+      width: min(100%, 390px); padding: 28px; border: 1px solid #4a5544; border-radius: 18px;
+      background: rgba(29, 34, 29, .98); box-shadow: 0 20px 70px #0007;
+    }
+    .login-kicker { margin: 0 0 8px; color: #c4d5a4; font-size: 11px; font-weight: 750; letter-spacing: .15em; }
+    .login-card h1 { margin: 0 0 8px; font-size: 25px; line-height: 1.2; }
+    .login-description { margin: 0 0 23px; color: var(--muted); line-height: 1.5; font-size: 14px; }
+    .login-card label { display: block; margin-bottom: 7px; color: #d6ddce; font-size: 13px; }
+    .login-field { display: flex; gap: 7px; }
+    .login-field input { width: 100%; min-width: 0; padding: 10px 12px; background: #20261f; }
+    .login-field button { padding: 7px 11px; }
+    #loginSubmit { width: 100%; margin-top: 13px; padding: 11px 14px; color: #22291f; background: #dce8c7; border-color: #dce8c7; font-weight: 750; }
+    #loginSubmit:disabled { cursor: wait; opacity: .65; }
+    #loginError { min-height: 18px; margin: 12px 0 0; color: #ffb7a8; font-size: 13px; line-height: 1.4; }
+    .login-footnote { margin: 16px 0 0; color: #919b8b; font-size: 11px; line-height: 1.45; }
+    @media (max-width: 600px) {
+      .toolbar { top: 6px; left: 6px; right: 6px; padding: 8px; gap: 6px; max-height: 35vh; }
+      .brand { min-width: 120px; flex-basis: 100%; }
+      .separator { display: none; }
+      button { min-height: 32px; padding: 5px 8px; font-size: 12px; }
+      #nameInput { width: 88px; }
+      #status { bottom: 7px; left: 7px; font-size: 11px; }
+      #compass { right: 10px; bottom: 48px; width: 44px; height: 44px; }
+      #help { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="mapCanvas" aria-label="Jaettu Valheim-karttapohja"></canvas>
+
+  <div class="toolbar">
+    <div class="brand">
+      <strong>VALHEIM / YHTEISKARTTA</strong>
+      <span>Piirtäkää maailma yhdessä</span>
+    </div>
+    <input id="nameInput" maxlength="24" aria-label="Oma nimi" placeholder="Nimimerkki" value="Viikinki">
+    <div class="separator"></div>
+    <button class="tool active" data-tool="pen" title="Piirrä vapaasti">✎ Piirrä</button>
+    <button class="tool" data-tool="note" title="Lisää kartalle tekstimerkintä">⚑ Merkintä</button>
+    <button class="tool" data-tool="eraser" title="Pyyhi piirtämällä taustavärillä">⌫ Kumitin</button>
+    <button class="tool" data-tool="pan" title="Liikuta karttaa vetämällä">✋ Liikuta</button>
+    <div class="separator"></div>
+    <div class="palette" aria-label="Piirrosväri">
+      <button class="color-btn selected" data-color="#d94841" style="background:#d94841" aria-label="Punainen" title="Punainen"></button>
+      <button class="color-btn" data-color="#e58b2a" style="background:#e58b2a" aria-label="Oranssi" title="Oranssi"></button>
+      <button class="color-btn" data-color="#d4b52c" style="background:#d4b52c" aria-label="Keltainen" title="Keltainen"></button>
+      <button class="color-btn" data-color="#36885a" style="background:#36885a" aria-label="Vihreä" title="Vihreä"></button>
+      <button class="color-btn" data-color="#3478b8" style="background:#3478b8" aria-label="Sininen" title="Sininen"></button>
+      <button class="color-btn" data-color="#8c5db7" style="background:#8c5db7" aria-label="Violetti" title="Violetti"></button>
+      <button class="color-btn" data-color="#353a33" style="background:#353a33" aria-label="Tumma" title="Tumma"></button>
+    </div>
+    <label for="brushSize" style="font-size:12px;color:var(--muted)">Koko</label>
+    <select id="brushSize" aria-label="Siveltimen koko">
+      <option value="3">Ohut</option><option value="6" selected>Tavallinen</option><option value="11">Paksu</option><option value="18">Erittäin paksu</option>
+    </select>
+    <div class="separator"></div>
+    <button id="zoomOut" title="Loitonna">−</button>
+    <button id="zoomIn" title="Lähennä">+</button>
+    <button id="centerView" title="Keskitä näkymä">Keskitä</button>
+    <button id="exportPng" title="Tallenna nykyinen näkymä PNG-kuvaksi">Vie PNG</button>
+    <button id="copyLink" title="Kopioi tämän kartan linkki">Kopioi linkki</button>
+    <button id="signOutBtn" hidden title="Kirjaudu ulos kartasta">Kirjaudu ulos</button>
+  </div>
+
+  <div id="status" role="status">Käynnistetään karttaa…</div>
+  <div id="help">Hiiren rulla = zoomaus · välilyönti + veto = liikuta · merkintätyökalulla klikkaa karttaa</div>
+  <div id="compass"><b>N</b><span>↑</span></div>
+
+  <section id="loginGate" class="login-gate" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <form id="loginForm" class="login-card">
+      <p class="login-kicker">VALHEIM / YHTEISKARTTA</p>
+      <h1 id="loginTitle">Vain peliporukalle</h1>
+      <p class="login-description">Anna peliporukan yhteinen salasana avataksesi kartan ja tallentaaksesi löytöjä.</p>
+      <label for="loginPassword">Yhteinen salasana</label>
+      <div class="login-field">
+        <input id="loginPassword" type="password" autocomplete="current-password" required minlength="1" placeholder="Salasana" aria-describedby="loginError">
+        <button id="togglePassword" type="button">Näytä</button>
+      </div>
+      <button id="loginSubmit" type="submit">Avaa kartta</button>
+      <p id="loginError" role="alert" aria-live="polite"></p>
+      <p class="login-footnote">Kirjautuminen vaaditaan pilvikartassa. Yhteinen salasana suojaa karttaa satunnaisilta vierailijoilta; jaa se vain peliporukalle.</p>
+    </form>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    // PILVIKÄYTTÖÖN: täytä nämä kaksi arvoa Supabase-projektistasi.
+    // Käytä Project URL -osoitetta ja publishable/public-avainta (sb_publishable_... tai legacy anon key).
+    // ÄLÄ laita tähän service_role-avainta.
+    const SUPABASE_URL = "PASTE_SUPABASE_URL_HERE";
+    const SUPABASE_KEY = "PASTE_SUPABASE_PUBLISHABLE_KEY_HERE";
+    // Luo Supabase Authiin tämä käyttäjä ja aseta sille peliporukan salasana.
+    // Kirjautumisruutu kysyy vain salasanan; tämä sähköpostiosoite toimii sisäisenä käyttäjätunnuksena.
+    const SHARED_LOGIN_EMAIL = "valheim-map@example.com";
+    const BOARD_ID = "valheim-main-world"; // Tämän täytyy vastata schema.sql-tiedoston board_id-arvoa.
+    const LOCAL_STORAGE_KEY = "valheim-map-offline-v1";
+    const BG = "#f8f5ee";
+
+    const canvas = document.getElementById('mapCanvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const nameInput = document.getElementById('nameInput');
+    const brushSizeEl = document.getElementById('brushSize');
+    let supabaseClient = null;
+    let realtimeChannel = null;
+    let cloudMode = false;
+    let cloudConfigured = false;
+    let activeTool = 'pen';
+    let activeColor = '#d94841';
+    let zoom = 1;
+    let camX = 0, camY = 0;
+    let viewInitialized = false;
+    let dpr = Math.max(1, window.devicePixelRatio || 1);
+    let currentStroke = null;
+    let panState = null;
+    let spaceDown = false;
+    let items = new Map();
+    let statusTimer = null;
+
+    function setStatus(message, temporary = false) {
+      statusEl.textContent = message;
+      if (statusTimer) clearTimeout(statusTimer);
+      if (temporary) statusTimer = setTimeout(() => {
+        statusEl.textContent = cloudMode ? 'Pilvikartta yhdistetty · muutokset tallentuvat automaattisesti' : 'Paikallinen tila · kartta tallentuu vain tälle laitteelle';
+      }, 4500);
+    }
+
+    function getName() {
+      const value = (nameInput.value || '').trim().slice(0, 24);
+      return value || 'Viikinki';
+    }
+    nameInput.value = localStorage.getItem('valheim-map-name') || 'Viikinki';
+    nameInput.addEventListener('change', () => localStorage.setItem('valheim-map-name', getName()));
+
+    function saveLocalItems() {
+      if (cloudMode) return;
+      try { localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...items.values()])); }
+      catch (e) { setStatus('Paikallinen tallennus ei onnistunut: selaimen tallennustila voi olla täynnä.', true); }
+    }
+
+    function orderedItems() {
+      return [...items.values()].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    }
+
+    function resizeCanvas() {
+      const oldW = canvas.clientWidth || window.innerWidth;
+      const oldH = canvas.clientHeight || window.innerHeight;
+      dpr = Math.max(1, window.devicePixelRatio || 1);
+      canvas.width = Math.round(oldW * dpr);
+      canvas.height = Math.round(oldH * dpr);
+      if (!viewInitialized) {
+        camX = -oldW / 2;
+        camY = -oldH / 2;
+        viewInitialized = true;
+      }
+      render();
+    }
+
+    function drawGrid() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const left = camX, top = camY;
+      const right = left + width / zoom, bottom = top + height / zoom;
+      ctx.fillStyle = BG;
+      ctx.fillRect(left, top, width / zoom, height / zoom);
+      const step = 100;
+      ctx.lineWidth = 1 / zoom;
+      for (let x = Math.floor(left / step) * step; x <= right; x += step) {
+        const major = Math.round(x / 500) === x / 500;
+        ctx.strokeStyle = major ? '#d8d0c0' : '#eae4d9';
+        ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        if (major) {
+          ctx.fillStyle = '#aaa08e'; ctx.font = `${11 / zoom}px system-ui`;
+          ctx.fillText(String(x), x + 4 / zoom, top + 14 / zoom);
+        }
+      }
+      for (let y = Math.floor(top / step) * step; y <= bottom; y += step) {
+        const major = Math.round(y / 500) === y / 500;
+        ctx.strokeStyle = major ? '#d8d0c0' : '#eae4d9';
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+        if (major) {
+          ctx.fillStyle = '#aaa08e'; ctx.font = `${11 / zoom}px system-ui`;
+          ctx.fillText(String(y), left + 4 / zoom, y - 4 / zoom);
+        }
+      }
+    }
+
+    function drawStroke(payload) {
+      const points = payload.points || [];
+      if (!points.length) return;
+      ctx.save();
+      ctx.strokeStyle = payload.erase ? BG : (payload.color || '#353a33');
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.lineWidth = Math.max(1, Number(payload.width) || 5);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (points.length === 1) {
+        ctx.beginPath(); ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function roundedRect(x, y, w, h, r) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.beginPath(); ctx.moveTo(x + radius, y); ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius); ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius); ctx.closePath();
+    }
+
+    function drawNote(payload) {
+      const x = Number(payload.x) || 0, y = Number(payload.y) || 0;
+      const text = String(payload.text || 'Merkintä').slice(0, 500);
+      const lines = text.split('\n').slice(0, 8);
+      const fontPx = 13 / zoom;
+      ctx.save();
+      ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      const padding = 7 / zoom, lineHeight = 17 / zoom;
+      const textX = x + 13 / zoom, textY = y + 4 / zoom;
+      const maxWidth = Math.max(60 / zoom, ...lines.map(line => ctx.measureText(line).width));
+      const author = String(payload.author || '').slice(0, 24);
+      ctx.font = `${10 / zoom}px system-ui, sans-serif`;
+      const authorWidth = author ? ctx.measureText(author).width : 0;
+      const boxW = Math.max(maxWidth, authorWidth) + padding * 2;
+      const boxH = padding * 2 + lines.length * lineHeight + (author ? 13 / zoom : 0);
+      ctx.fillStyle = '#fffdf7'; ctx.strokeStyle = payload.color || '#353a33'; ctx.lineWidth = 1.2 / zoom;
+      roundedRect(textX - padding, textY - padding, boxW, boxH, 5 / zoom); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = payload.color || '#353a33';
+      ctx.beginPath(); ctx.arc(x, y, 5.5 / zoom, 0, Math.PI * 2); ctx.fill();
+      ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      lines.forEach((line, i) => ctx.fillText(line, textX, textY + (i + 1) * lineHeight - 3 / zoom));
+      if (author) {
+        ctx.fillStyle = '#827968'; ctx.font = `${10 / zoom}px system-ui, sans-serif`;
+        ctx.fillText('— ' + author, textX, textY + lines.length * lineHeight + 8 / zoom);
+      }
+      ctx.restore();
+    }
+
+    function render() {
+      if (!ctx || !canvas.width || !canvas.height) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -camX * dpr * zoom, -camY * dpr * zoom);
+      drawGrid();
+      const list = orderedItems();
+      for (const item of list) {
+        if (item.kind === 'stroke') drawStroke(item.payload || {});
+        else if (item.kind === 'note') drawNote(item.payload || {});
+      }
+      if (currentStroke) drawStroke(currentStroke);
+    }
+
+    function screenToWorld(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: camX + (clientX - rect.left) / zoom, y: camY + (clientY - rect.top) / zoom };
+    }
+
+    function addItem(item) {
+      if (item && item.id && !items.has(item.id)) items.set(item.id, item);
+      render();
+      if (!cloudMode) saveLocalItems();
+    }
+
+    async function persistItem(kind, payload) {
+      if (!cloudMode || !supabaseClient) {
+        const item = { id: 'local-' + crypto.randomUUID(), board_id: BOARD_ID, kind, payload, created_at: new Date().toISOString() };
+        addItem(item);
+        setStatus('Tallennettu tälle laitteelle. Ota pilvitallennus käyttöön, jotta muut näkevät sen.', true);
+        return;
+      }
+      const tempId = 'pending-' + crypto.randomUUID();
+      const tempItem = { id: tempId, board_id: BOARD_ID, kind, payload, created_at: new Date().toISOString() };
+      items.set(tempId, tempItem); render();
+      const { data, error } = await supabaseClient.from('map_items')
+        .insert({ board_id: BOARD_ID, kind, payload })
+        .select('id, board_id, kind, payload, created_at').single();
+      items.delete(tempId);
+      if (error) {
+        render();
+        setStatus('Tallennus epäonnistui. Tarkista internet-yhteys, Supabase-asetukset ja RLS-säännöt. ' + error.message, true);
+        return;
+      }
+      items.set(data.id, data);
+      render();
+      setStatus('Merkintä tallennettu ja jaettu muille.', true);
+    }
+
+    function setTool(tool) {
+      activeTool = tool;
+      document.querySelectorAll('.tool').forEach(button => button.classList.toggle('active', button.dataset.tool === tool));
+      canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'note' ? 'copy' : tool === 'eraser' ? 'cell' : 'crosshair');
+    }
+    document.querySelectorAll('.tool').forEach(button => button.addEventListener('click', () => setTool(button.dataset.tool)));
+    document.querySelectorAll('.color-btn').forEach(button => button.addEventListener('click', () => {
+      activeColor = button.dataset.color;
+      document.querySelectorAll('.color-btn').forEach(b => b.classList.toggle('selected', b === button));
+    }));
+
+    canvas.addEventListener('contextmenu', event => event.preventDefault());
+    canvas.addEventListener('pointerdown', event => {
+      if (event.button === 2) { event.preventDefault(); }
+      canvas.setPointerCapture(event.pointerId);
+      const point = screenToWorld(event.clientX, event.clientY);
+      if (activeTool === 'pan' || spaceDown || event.button === 1 || event.button === 2) {
+        panState = { pointerX: event.clientX, pointerY: event.clientY, camX, camY };
+        canvas.style.cursor = 'grabbing';
+        return;
+      }
+      if (activeTool === 'note') {
+        const text = window.prompt('Mitä tähän kohtaan merkitään? (esim. tukikohta, hautakammio, suo, pomon sijainti)');
+        if (text && text.trim()) persistItem('note', { x: point.x, y: point.y, text: text.trim().slice(0, 500), color: activeColor, author: getName() });
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      currentStroke = {
+        color: activeColor,
+        width: Number(brushSizeEl.value) / zoom,
+        erase: activeTool === 'eraser',
+        points: [point],
+        author: getName(),
+        _startX: rect.left
+      };
+      render();
+    });
+
+    canvas.addEventListener('pointermove', event => {
+      if (panState) {
+        camX = panState.camX - (event.clientX - panState.pointerX) / zoom;
+        camY = panState.camY - (event.clientY - panState.pointerY) / zoom;
+        render(); return;
+      }
+      if (currentStroke) {
+        currentStroke.points.push(screenToWorld(event.clientX, event.clientY));
+        render();
+      }
+    });
+
+    async function finishPointer(event) {
+      if (panState) {
+        panState = null;
+        canvas.style.cursor = activeTool === 'pan' ? 'grab' : (activeTool === 'note' ? 'copy' : activeTool === 'eraser' ? 'cell' : 'crosshair');
+      }
+      if (currentStroke) {
+        const stroke = currentStroke;
+        currentStroke = null;
+        await persistItem('stroke', { color: stroke.color, width: stroke.width, erase: stroke.erase, points: stroke.points, author: stroke.author });
+      }
+      render();
+    }
+    canvas.addEventListener('pointerup', finishPointer);
+    canvas.addEventListener('pointercancel', finishPointer);
+
+    canvas.addEventListener('wheel', event => {
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const sx = event.clientX - rect.left, sy = event.clientY - rect.top;
+      const beforeX = camX + sx / zoom, beforeY = camY + sy / zoom;
+      const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      zoom = Math.max(0.2, Math.min(4, zoom * factor));
+      camX = beforeX - sx / zoom; camY = beforeY - sy / zoom;
+      render();
+    }, { passive: false });
+
+    window.addEventListener('keydown', event => {
+      if (event.code === 'Space' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { spaceDown = true; event.preventDefault(); }
+      if (event.key === '+' || event.key === '=') { changeZoom(1.15); }
+      if (event.key === '-') { changeZoom(1 / 1.15); }
+    });
+    window.addEventListener('keyup', event => { if (event.code === 'Space') spaceDown = false; });
+    window.addEventListener('blur', () => { spaceDown = false; panState = null; });
+
+    function changeZoom(factor) {
+      const sx = canvas.clientWidth / 2, sy = canvas.clientHeight / 2;
+      const beforeX = camX + sx / zoom, beforeY = camY + sy / zoom;
+      zoom = Math.max(0.2, Math.min(4, zoom * factor));
+      camX = beforeX - sx / zoom; camY = beforeY - sy / zoom; render();
+    }
+    document.getElementById('zoomIn').addEventListener('click', () => changeZoom(1.2));
+    document.getElementById('zoomOut').addEventListener('click', () => changeZoom(1 / 1.2));
+    document.getElementById('centerView').addEventListener('click', () => {
+      camX = -canvas.clientWidth / (2 * zoom); camY = -canvas.clientHeight / (2 * zoom); render();
+    });
+    document.getElementById('exportPng').addEventListener('click', () => {
+      render();
+      canvas.toBlob(blob => {
+        if (!blob) { setStatus('PNG-kuvan luonti epäonnistui.', true); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'valheim-yhteiskartta.png'; a.click();
+        URL.revokeObjectURL(url);
+        setStatus('Nykyinen näkymä tallennettu PNG-kuvaksi.', true);
+      }, 'image/png');
+    });
+    document.getElementById('copyLink').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(location.href);
+        setStatus('Karttalinkki kopioitu. Lähetä sama linkki muille pelaajille.', true);
+      } catch (e) { setStatus('Kopioi osoiterivin linkki ja lähetä se muille pelaajille.', true); }
+    });
+
+    const loginGate = document.getElementById('loginGate');
+    const loginForm = document.getElementById('loginForm');
+    const loginPassword = document.getElementById('loginPassword');
+    const loginError = document.getElementById('loginError');
+    const loginSubmit = document.getElementById('loginSubmit');
+    const signOutBtn = document.getElementById('signOutBtn');
+
+    function showLogin(message = '') {
+      loginGate.classList.remove('hidden');
+      loginError.textContent = message;
+      signOutBtn.hidden = true;
+      loginPassword.focus();
+    }
+
+    function hideLogin() {
+      loginGate.classList.add('hidden');
+      loginError.textContent = '';
+      loginPassword.value = '';
+    }
+
+    async function loadCloudMap() {
+      if (!supabaseClient) return false;
+      try {
+        cloudMode = true;
+        setStatus('Yhdistetään yhteiseen karttaan…');
+        realtimeChannel = supabaseClient.channel('valheim-map-live')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'map_items', filter: 'board_id=eq.' + BOARD_ID }, payload => {
+            const row = payload.new;
+            if (row && row.id && !items.has(row.id)) { items.set(row.id, row); render(); }
+          })
+          .subscribe(status => {
+            if (status === 'SUBSCRIBED') setStatus('Pilvikartta yhdistetty · muutokset tallentuvat automaattisesti');
+            else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setStatus('Reaaliaikainen yhteys ei toimi. Tarkista Supabasen Realtime-asetus.', true);
+          });
+        const { data, error } = await supabaseClient.from('map_items')
+          .select('id, board_id, kind, payload, created_at').eq('board_id', BOARD_ID).order('created_at', { ascending: true });
+        if (error) throw error;
+        for (const row of (data || [])) items.set(row.id, row);
+        render();
+        signOutBtn.hidden = false;
+        setStatus('Pilvikartta yhdistetty · muutokset tallentuvat automaattisesti');
+        return true;
+      } catch (error) {
+        cloudMode = false;
+        if (realtimeChannel) { try { await supabaseClient.removeChannel(realtimeChannel); } catch (_) {} realtimeChannel = null; }
+        setStatus('Karttaa ei voitu avata. Tarkista schema.sql-tiedoston käyttöoikeudet. ' + (error.message || ''), true);
+        return false;
+      }
+    }
+
+    loginForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!supabaseClient || !cloudConfigured) {
+        loginError.textContent = 'Pilvikarttaa ei ole vielä määritetty. Täytä Supabasen URL ja publishable key index.html-tiedostoon.';
+        return;
+      }
+      const password = loginPassword.value;
+      loginError.textContent = '';
+      loginSubmit.disabled = true;
+      loginSubmit.textContent = 'Tarkistetaan…';
+      try {
+        const { error } = await supabaseClient.auth.signInWithPassword({ email: SHARED_LOGIN_EMAIL, password });
+        if (error) throw error;
+        const loaded = await loadCloudMap();
+        if (!loaded) {
+          await supabaseClient.auth.signOut();
+          showLogin('Salasana hyväksyttiin, mutta kartan avaaminen epäonnistui. Tarkista tietokannan asetukset.');
+          return;
+        }
+        hideLogin();
+      } catch (error) {
+        loginError.textContent = 'Salasana ei kelpaa tai kirjautuminen epäonnistui. Tarkista salasana ja Supabase Auth -käyttäjä.';
+        loginPassword.select();
+      } finally {
+        loginSubmit.disabled = false;
+        loginSubmit.textContent = 'Avaa kartta';
+      }
+    });
+
+    document.getElementById('togglePassword').addEventListener('click', () => {
+      const show = loginPassword.type === 'password';
+      loginPassword.type = show ? 'text' : 'password';
+      document.getElementById('togglePassword').textContent = show ? 'Piilota' : 'Näytä';
+    });
+
+    signOutBtn.addEventListener('click', async () => {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      cloudMode = false;
+      items.clear();
+      render();
+      if (realtimeChannel && supabaseClient) {
+        try { await supabaseClient.removeChannel(realtimeChannel); } catch (_) {}
+        realtimeChannel = null;
+      }
+      showLogin('Olet kirjautunut ulos. Anna salasana avataksesi kartan uudelleen.');
+    });
+
+    async function init() {
+      resizeCanvas();
+      cloudConfigured = Boolean(window.supabase && !SUPABASE_URL.includes('PASTE_') && !SUPABASE_KEY.includes('PASTE_'));
+      if (!cloudConfigured) {
+        hideLogin();
+        try {
+          const stored = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+          for (const item of stored) if (item && item.id) items.set(item.id, item);
+        } catch (e) { /* Tyhjä paikallinen kartta, jos tallenne on viallinen. */ }
+        render();
+        setStatus('Paikallinen tila · kartta tallentuu vain tälle laitteelle. Yhteiskäyttö vaatii Supabase-asetukset.');
+        return;
+      }
+
+      try {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        supabaseClient.auth.onAuthStateChange((event) => {
+          if (event === 'SIGNED_OUT') {
+            cloudMode = false;
+            if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel).catch(() => {}); realtimeChannel = null; }
+            items.clear();
+            render();
+            showLogin('Kirjautuminen päättyi. Anna salasana jatkaaksesi.');
+          }
+        });
+        const { data, error } = await supabaseClient.auth.getSession();
+        if (error) throw error;
+        if (data.session) {
+          const loaded = await loadCloudMap();
+          if (loaded) hideLogin();
+          else showLogin('Kirjautumisesi löytyi, mutta karttaa ei voitu avata. Tarkista tietokannan asetukset.');
+        } else {
+          showLogin();
+          setStatus('Kirjautuminen vaaditaan ennen kartan avaamista.');
+        }
+      } catch (error) {
+        showLogin('Supabase-yhteys epäonnistui. Tarkista projektin URL, publishable key ja Auth-asetukset.');
+        setStatus('Supabase-yhteys epäonnistui.', true);
+      }
+    }
+    window.addEventListener('resize', resizeCanvas);
+    init();
+  </script>
+</body>
+</html>
