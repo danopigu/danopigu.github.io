@@ -252,7 +252,11 @@
       ctx.save();
       ctx.strokeStyle = payload.erase ? BG : (payload.color || '#353a33');
       ctx.fillStyle = ctx.strokeStyle;
-      ctx.lineWidth = Math.max(1, Number(payload.width) || 5) / zoom;
+      ctx.lineWidth = Math.max(1, Number(payload.width) || 5);
+      ctx.lineWidth =
+        payload.erase && payload.eraseWorldWidth
+        ? storedWidth
+        : storedWidth / zoom;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       if (points.length === 1) {
         ctx.beginPath(); ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
@@ -374,11 +378,14 @@
         if (text && text.trim()) persistItem('note', { x: point.x, y: point.y, text: text.trim().slice(0, 500), color: activeColor, author: getName() });
         return;
       }
-      const rect = canvas.getBoundingClientRect();
-      currentStroke = {
+      cconst rect = canvas.getBoundingClientRect();
+        const isEraser = activeTool === 'eraser';
+
+        currentStroke = {
         color: activeColor,
-        width: Number(brushSizeEl.value),
-        erase: activeTool === 'eraser',
+        width: Number(brushSizeEl.value) / (isEraser ? zoom : 1),
+        erase: isEraser,
+        eraseWorldWidth: isEraser,
         points: [point],
         author: getName(),
         _startX: rect.left
