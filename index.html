@@ -159,6 +159,9 @@
 
     const canvas = document.getElementById('mapCanvas');
     const ctx = canvas.getContext('2d');
+    // Transparent drawing layer: eraser removes user marks here, never the grid below.
+    const marksCanvas = document.createElement('canvas');
+    const marksCtx = marksCanvas.getContext('2d');
     const statusEl = document.getElementById('status');
     const nameInput = document.getElementById('nameInput');
     const brushSizeEl = document.getElementById('brushSize');
@@ -209,6 +212,8 @@
       dpr = Math.max(1, window.devicePixelRatio || 1);
       canvas.width = Math.round(oldW * dpr);
       canvas.height = Math.round(oldH * dpr);
+      marksCanvas.width = canvas.width;
+      marksCanvas.height = canvas.height;
       if (!viewInitialized) {
         camX = -oldW / 2;
         camY = -oldH / 2;
@@ -246,26 +251,29 @@
       }
     }
 
-    function drawStroke(payload) {
+    function drawStroke(payload, targetCtx = ctx) {
       const points = payload.points || [];
       if (!points.length) return;
-      ctx.save();
-      ctx.strokeStyle = payload.erase ? BG : (payload.color || '#353a33');
-      ctx.fillStyle = ctx.strokeStyle;
+      const drawingCtx = targetCtx;
+      drawingCtx.save();
+      // Erase only the transparent marks layer. Do not paint over the background/grid.
+      drawingCtx.globalCompositeOperation = payload.erase ? 'destination-out' : 'source-over';
+      drawingCtx.strokeStyle = payload.color || '#353a33';
+      drawingCtx.fillStyle = drawingCtx.strokeStyle;
       const storedWidth = Math.max(0.1, Number(payload.width) || 5);
-      ctx.lineWidth =
+      drawingCtx.lineWidth =
         payload.erase && payload.eraseWorldWidth
           ? storedWidth
           : storedWidth / zoom;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round';
       if (points.length === 1) {
-        ctx.beginPath(); ctx.arc(points[0].x, points[0].y, ctx.lineWidth / 2, 0, Math.PI * 2); ctx.fill();
+        drawingCtx.beginPath(); drawingCtx.arc(points[0].x, points[0].y, drawingCtx.lineWidth / 2, 0, Math.PI * 2); drawingCtx.fill();
       } else {
-        ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-        ctx.stroke();
+        drawingCtx.beginPath(); drawingCtx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) drawingCtx.lineTo(points[i].x, points[i].y);
+        drawingCtx.stroke();
       }
-      ctx.restore();
+      drawingCtx.restore();
     }
 
     function roundedRect(x, y, w, h, r) {
@@ -275,46 +283,59 @@
       ctx.arcTo(x, y, x + w, y, radius); ctx.closePath();
     }
 
-    function drawNote(payload) {
+    function drawNote(payload, targetCtx = ctx) {
+      const drawingCtx = targetCtx;
       const x = Number(payload.x) || 0, y = Number(payload.y) || 0;
       const text = String(payload.text || 'Merkintä').slice(0, 500);
       const lines = text.split('\n').slice(0, 8);
       const fontPx = 13 / zoom;
-      ctx.save();
-      ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      drawingCtx.save();
+      drawingCtx.font = `600 ${fontPx}px system-ui, sans-serif`;
       const padding = 7 / zoom, lineHeight = 17 / zoom;
       const textX = x + 13 / zoom, textY = y + 4 / zoom;
-      const maxWidth = Math.max(60 / zoom, ...lines.map(line => ctx.measureText(line).width));
+      const maxWidth = Math.max(60 / zoom, ...lines.map(line => drawingCtx.measureText(line).width));
       const author = String(payload.author || '').slice(0, 24);
-      ctx.font = `${10 / zoom}px system-ui, sans-serif`;
-      const authorWidth = author ? ctx.measureText(author).width : 0;
+      drawingCtx.font = `${10 / zoom}px system-ui, sans-serif`;
+      const authorWidth = author ? drawingCtx.measureText(author).width : 0;
       const boxW = Math.max(maxWidth, authorWidth) + padding * 2;
       const boxH = padding * 2 + lines.length * lineHeight + (author ? 13 / zoom : 0);
-      ctx.fillStyle = '#fffdf7'; ctx.strokeStyle = payload.color || '#353a33'; ctx.lineWidth = 1.2 / zoom;
-      roundedRect(textX - padding, textY - padding, boxW, boxH, 5 / zoom); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = payload.color || '#353a33';
-      ctx.beginPath(); ctx.arc(x, y, 5.5 / zoom, 0, Math.PI * 2); ctx.fill();
-      ctx.font = `600 ${fontPx}px system-ui, sans-serif`;
-      lines.forEach((line, i) => ctx.fillText(line, textX, textY + (i + 1) * lineHeight - 3 / zoom));
+      drawingCtx.fillStyle = '#fffdf7'; drawingCtx.strokeStyle = payload.color || '#353a33'; drawingCtx.lineWidth = 1.2 / zoom;
+      roundedRect(textX - padding, textY - padding, boxW, boxH, 5 / zoom); drawingCtx.fill(); drawingCtx.stroke();
+      drawingCtx.fillStyle = payload.color || '#353a33';
+      drawingCtx.beginPath(); drawingCtx.arc(x, y, 5.5 / zoom, 0, Math.PI * 2); drawingCtx.fill();
+      drawingCtx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      lines.forEach((line, i) => drawingCtx.fillText(line, textX, textY + (i + 1) * lineHeight - 3 / zoom));
       if (author) {
-        ctx.fillStyle = '#827968'; ctx.font = `${10 / zoom}px system-ui, sans-serif`;
-        ctx.fillText('— ' + author, textX, textY + lines.length * lineHeight + 8 / zoom);
+        drawingCtx.fillStyle = '#827968'; drawingCtx.font = `${10 / zoom}px system-ui, sans-serif`;
+        drawingCtx.fillText('— ' + author, textX, textY + lines.length * lineHeight + 8 / zoom);
       }
-      ctx.restore();
+      drawingCtx.restore();
     }
 
     function render() {
-      if (!ctx || !canvas.width || !canvas.height) return;
+      if (!ctx || !marksCtx || !canvas.width || !canvas.height) return;
+
+      // Paint the base layer and grid first. The eraser never touches this canvas.
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -camX * dpr * zoom, -camY * dpr * zoom);
       drawGrid();
+
+      // Redraw marks in chronological order on a transparent layer. Eraser strokes
+      // use destination-out there, so only previous player marks are removed.
+      marksCtx.setTransform(1, 0, 0, 1, 0, 0);
+      marksCtx.clearRect(0, 0, marksCanvas.width, marksCanvas.height);
+      marksCtx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -camX * dpr * zoom, -camY * dpr * zoom);
       const list = orderedItems();
       for (const item of list) {
-        if (item.kind === 'stroke') drawStroke(item.payload || {});
-        else if (item.kind === 'note') drawNote(item.payload || {});
+        if (item.kind === 'stroke') drawStroke(item.payload || {}, marksCtx);
+        else if (item.kind === 'note') drawNote(item.payload || {}, marksCtx);
       }
-      if (currentStroke) drawStroke(currentStroke);
+      if (currentStroke) drawStroke(currentStroke, marksCtx);
+
+      // Composite the transparent user-mark layer above the untouched grid.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(marksCanvas, 0, 0);
     }
 
     function screenToWorld(clientX, clientY) {
@@ -545,7 +566,7 @@
         }
         hideLogin();
       } catch (error) {
-        loginError.textContent = 'Salasana ei kelpaa tai kirjautuminen epäonnistui. Tarkista salasana ja Supabase Auth -käyttäjä.';
+        loginError.textContent = 'Kirjautuminen epäonnistui: ' + (error && error.message ? error.message : 'Tuntematon virhe') + '. Tarkista Supabase Auth -käyttäjä ja salasana.';
         loginPassword.select();
       } finally {
         loginSubmit.disabled = false;
